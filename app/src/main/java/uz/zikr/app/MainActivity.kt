@@ -5,29 +5,27 @@ import android.app.Activity
 import android.content.Intent
 import android.content.SharedPreferences
 import android.content.pm.PackageManager
+import android.content.res.ColorStateList
 import android.graphics.Color
-import android.graphics.drawable.GradientDrawable
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
-import android.view.Gravity
+import android.view.KeyEvent
 import android.view.ViewGroup
 import android.widget.Button
 import android.widget.LinearLayout
+import android.widget.ProgressBar
 import android.widget.TextView
 import android.widget.Toast
 
 class MainActivity : Activity() {
 
-    private val bgColor = Color.parseColor("#0B1220")
-    private val cardColor = Color.parseColor("#1B2638")
-    private val accent = Color.parseColor("#0F766E")
-    private val danger = Color.parseColor("#7F1D1D")
-
     private lateinit var countText: TextView
     private lateinit var roundText: TextView
     private lateinit var statusText: TextView
+    private lateinit var todayText: TextView
+    private lateinit var dayBar: ProgressBar
     private lateinit var toggleBtn: Button
     private val targetButtons = mutableListOf<Pair<Int, Button>>()
 
@@ -57,100 +55,103 @@ class MainActivity : Activity() {
         super.onPause()
     }
 
+    // Ilova ochiq paytida ham ovoz tugmasi bilan sanash
+    override fun onKeyDown(keyCode: Int, event: KeyEvent?): Boolean {
+        if (ZikrPrefs.of(this).getBoolean(ZikrPrefs.VOLUME, false)) {
+            if (keyCode == KeyEvent.KEYCODE_VOLUME_UP) {
+                if ((event?.repeatCount ?: 0) == 0) {
+                    ZikrPrefs.feedback(this, ZikrPrefs.add(this, 1))
+                }
+                return true
+            }
+            if (keyCode == KeyEvent.KEYCODE_VOLUME_DOWN) {
+                if ((event?.repeatCount ?: 0) == 0) {
+                    ZikrPrefs.add(this, -1)
+                    ZikrPrefs.feedback(this, ZikrPrefs.EVENT_NONE)
+                }
+                return true
+            }
+        }
+        return super.onKeyDown(keyCode, event)
+    }
+
     // ---------- UI ----------
 
-    private fun dp(v: Int): Int = (v * resources.displayMetrics.density).toInt()
-
     private fun buildUi() {
-        val root = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setBackgroundColor(bgColor)
-            setPadding(dp(24), dp(48), dp(24), dp(24))
-            gravity = Gravity.CENTER_HORIZONTAL
+        val (scroll, root) = Ui.page(this)
+
+        root.addView(Ui.text(this, "Zikr", 28f, Color.WHITE))
+
+        statusText = Ui.text(this, "", 14f, Ui.muted)
+        root.addView(statusText, Ui.lp(this, 4))
+
+        countText = Ui.text(this, "0", 84f, Color.WHITE)
+        countText.setOnClickListener {
+            ZikrPrefs.feedback(this, ZikrPrefs.add(this, 1))
         }
+        root.addView(countText, Ui.lp(this, 24))
 
-        root.addView(TextView(this).apply {
-            text = "Zikr"
-            setTextColor(Color.WHITE)
-            textSize = 28f
-            gravity = Gravity.CENTER
-        })
+        roundText = Ui.text(this, "", 16f, Ui.muted)
+        root.addView(roundText, Ui.lp(this, 0))
 
-        statusText = TextView(this).apply {
-            setTextColor(Color.parseColor("#94A3B8"))
-            textSize = 14f
-            gravity = Gravity.CENTER
+        // Bugungi tasbeh yo'li
+        todayText = Ui.text(this, "", 14f, Ui.gold)
+        root.addView(todayText, Ui.lp(this, 24))
+
+        dayBar = ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal).apply {
+            max = 1000
+            progressTintList = ColorStateList.valueOf(Ui.gold)
+            progressBackgroundTintList = ColorStateList.valueOf(Color.parseColor("#334155"))
         }
-        root.addView(statusText, lp(top = 4))
+        root.addView(dayBar, Ui.lp(this, 6, Ui.dp(this, 12)))
 
-        countText = TextView(this).apply {
-            setTextColor(Color.WHITE)
-            textSize = 84f
-            gravity = Gravity.CENTER
-        }
-        root.addView(countText, lp(top = 32))
+        toggleBtn = Ui.button(this, "", Ui.accent) { toggleOverlay() }
+        root.addView(toggleBtn, Ui.lp(this, 28, Ui.dp(this, 56)))
 
-        roundText = TextView(this).apply {
-            setTextColor(Color.parseColor("#94A3B8"))
-            textSize = 16f
-            gravity = Gravity.CENTER
-        }
-        root.addView(roundText, lp(top = 0))
-
-        toggleBtn = styledButton("", accent) { toggleOverlay() }
-        root.addView(toggleBtn, lp(top = 40, height = dp(56)))
-
-        // Maqsad tanlash
+        // Davra uzunligi
         val targets = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
         for (t in listOf(33, 99, 100)) {
-            val b = styledButton("$t", cardColor) {
+            val b = Ui.button(this, "$t", Ui.card) {
                 ZikrPrefs.of(this).edit().putInt(ZikrPrefs.TARGET, t).apply()
                 refresh()
             }
             targetButtons.add(t to b)
-            val p = LinearLayout.LayoutParams(0, dp(48), 1f)
-            p.setMargins(dp(4), 0, dp(4), 0)
+            val p = LinearLayout.LayoutParams(0, Ui.dp(this, 48), 1f)
+            p.setMargins(Ui.dp(this, 4), 0, Ui.dp(this, 4), 0)
             targets.addView(b, p)
         }
-        root.addView(targets, lp(top = 16))
+        root.addView(targets, Ui.lp(this, 16))
 
-        root.addView(styledButton("Nolga qaytarish", danger) {
+        // Statistika va sozlamalar
+        val nav = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+        val stats = Ui.button(this, "Statistika", Ui.card) {
+            startActivity(Intent(this, StatsActivity::class.java))
+        }
+        val sets = Ui.button(this, "Sozlamalar", Ui.card) {
+            startActivity(Intent(this, SettingsActivity::class.java))
+        }
+        for (b in listOf(stats, sets)) {
+            val p = LinearLayout.LayoutParams(0, Ui.dp(this, 48), 1f)
+            p.setMargins(Ui.dp(this, 4), 0, Ui.dp(this, 4), 0)
+            nav.addView(b, p)
+        }
+        root.addView(nav, Ui.lp(this, 12))
+
+        root.addView(Ui.button(this, "Nolga qaytarish", Ui.danger) {
             ZikrPrefs.of(this).edit().putInt(ZikrPrefs.COUNT, 0).apply()
             refresh()
-        }, lp(top = 16, height = dp(48)))
+        }, Ui.lp(this, 12, Ui.dp(this, 48)))
 
-        root.addView(TextView(this).apply {
-            text = "Doirani bosing: +1\nSurib joyini o'zgartiring\nUzoq bosing: shu oynani ochadi"
-            setTextColor(Color.parseColor("#64748B"))
-            textSize = 13f
-            gravity = Gravity.CENTER
-        }, lp(top = 24))
+        root.addView(
+            Ui.text(
+                this,
+                "Doirani bosing: +1\nSurib joyini o'zgartiring\nUzoq bosing: shu oynani ochadi",
+                13f, Ui.faint
+            ),
+            Ui.lp(this, 24)
+        )
 
-        setContentView(root)
-    }
-
-    private fun lp(top: Int, height: Int = ViewGroup.LayoutParams.WRAP_CONTENT): LinearLayout.LayoutParams {
-        val p = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, height)
-        p.topMargin = dp(top)
-        return p
-    }
-
-    private fun styledButton(label: String, color: Int, onClick: () -> Unit): Button =
-        Button(this).apply {
-            text = label
-            isAllCaps = false
-            textSize = 16f
-            setTextColor(Color.WHITE)
-            stateListAnimator = null
-            background = GradientDrawable().apply {
-                setColor(color)
-                cornerRadius = dp(14).toFloat()
-            }
-            setOnClickListener { onClick() }
-        }
-
-    private fun setButtonColor(b: Button, color: Int) {
-        (b.background as GradientDrawable).setColor(color)
+        setContentView(scroll)
     }
 
     // ---------- Holat ----------
@@ -161,9 +162,18 @@ class MainActivity : Activity() {
         val target = prefs.getInt(ZikrPrefs.TARGET, 33).coerceAtLeast(1)
         val running = prefs.getBoolean(ZikrPrefs.RUNNING, false)
         val canDraw = Settings.canDrawOverlays(this)
+        val today = ZikrPrefs.dayCount(this, 0)
+        val goal = ZikrPrefs.goal(this)
+        val streak = ZikrPrefs.streak(this)
 
         countText.text = count.toString()
         roundText.text = "${count / target} davra  ·  ${count % target}/$target"
+
+        val pct = (today * 100L / goal).toInt().coerceAtMost(100)
+        var line = "Bugun: $today / $goal  ·  $pct%"
+        if (streak > 0) line += "  ·  $streak kun ketma-ket"
+        todayText.text = line
+        dayBar.progress = (today * 1000L / goal).toInt().coerceIn(0, 1000)
 
         statusText.text = when {
             !canDraw -> "Ruxsat kerak: boshqa ilovalar ustida ko'rsatish"
@@ -171,10 +181,10 @@ class MainActivity : Activity() {
             else -> "Suzuvchi doira o'chiq"
         }
         toggleBtn.text = if (running) "Doirani o'chirish" else "Doirani yoqish"
-        setButtonColor(toggleBtn, if (running) danger else accent)
+        Ui.setButtonColor(toggleBtn, if (running) Ui.danger else Ui.accent)
 
         for ((t, b) in targetButtons) {
-            setButtonColor(b, if (t == target) accent else cardColor)
+            Ui.setButtonColor(b, if (t == target) Ui.accent else Ui.card)
         }
     }
 

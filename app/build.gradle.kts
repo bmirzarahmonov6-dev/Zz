@@ -11,11 +11,25 @@ android {
         applicationId = "uz.zikr.app"
         minSdk = 24
         targetSdk = 34
-        versionCode = 1
-        versionName = "1.0"
+        versionCode = 2
+        versionName = "1.1"
+    }
+
+    // Har safar bir xil imzo bo'lishi uchun (yangilanish ustiga o'rnatilsin)
+    signingConfigs {
+        create("shared") {
+            storeFile = file("zikr.keystore")
+            storePassword = "zikr123"
+            keyAlias = "zikr"
+            keyPassword = "zikr123"
+            storeType = "pkcs12"
+        }
     }
 
     buildTypes {
+        getByName("debug") {
+            signingConfig = signingConfigs.getByName("shared")
+        }
         release {
             isMinifyEnabled = false
         }
